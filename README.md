@@ -6,6 +6,12 @@ A small script to dynamically update DNS records using the Hetzner DNS-API. Feel
 
 https://dns.hetzner.com/api-docs/
 
+
+* based on https://github.com/FarrowStrange/hetzner-api-dyndns
+
+but updated and extended with different resolvers and new hetzner api via `hetzner-cloud-console-api` ([see](https://docs.hetzner.cloud/reference/cloud#tag))
+
+
 # Preparations
 
 ## Install tools
