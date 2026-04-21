@@ -1,6 +1,6 @@
-#!/bin/sh
-# DynDNS Script for Hetzner DNS API by FarrowStrange
-# v1.3
+#!/usr/bin/env bash
+# DynDNS Script for Hetzner DNS API by FarrowStrange; Updateded and Extended by Blackeye/ Blackstareye
+# v1.4
 
 # get OS environment variables
 auth_api_token=${HETZNER_AUTH_API_TOKEN:-''}
