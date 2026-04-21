@@ -11,16 +11,16 @@ zone_id=${HETZNER_ZONE_ID:-''}
 record_name=${HETZNER_RECORD_NAME:-''}
 record_ttl=${HETZNER_RECORD_TTL:-'60'}
 record_type=${HETZNER_RECORD_TYPE:-'A'}
+
+
 localserver=${LOCALSERVERFILE:-'server.json'}
-ext_ip_resolver_type=${HETZNER_EXT_IP_RESOLVER_TYPE:-'who-am-i'}
-ext_ip_resolver=${HETZNER_EXT_IP_RESOLVER:-'whoami.cloudflare'}
-
-
+ext_ip_resolver_type=${HETZNER_EXT_IP_RESOLVER_TYPE:-'hetzner'}
+ext_ip_resolver=${HETZNER_EXT_IP_RESOLVER:-'https://ip.hetzner.com'}
 
 display_help() {
   cat <<EOF
 
-exec: ./dyndns.sh [ -z <Zone ID> | -Z <Zone Name> ] [-m <who-am-i|fritzbox|server>] -r <Record ID> -n <Record Name>
+exec: ./dyndns.sh [ -z <Zone ID> | -Z <Zone Name> ] [-m <hetzner|fritzbox|server>] -r <Record ID> -n <Record Name>
 
 parameters:
   -z  - Zone ID
@@ -31,7 +31,7 @@ parameters:
 optional parameters:
   -t  - TTL (Default: 60)
   -T  - Record type (Default: A)
-  -m  - Method for Extracting IP(Default:who-am-i)
+  -m  - Method for Extracting IP(Default:hetzner)
 
 help:
   -h  - Show Help 
@@ -51,10 +51,6 @@ EOF
 logger() {
   echo ${1}: Record_Name: ${record_name} : ${2}
 }
-
-
-
-
 while getopts ":z:Z:m:r:n:t:T:h" opt; do
   case "$opt" in
     z  ) zone_id="${OPTARG}";;
@@ -87,7 +83,9 @@ if [[ "${auth_api_token}" = "" ]]; then
 fi
 
 # get all zones
-zone_info=$(curl -s --location "https://dns.hetzner.com/api/v1/zones" --header "Auth-API-Token: $auth_api_token")
+zone_info=$(curl -s --location \
+          "https://dns.hetzner.com/api/v1/zones" \
+          --header 'Auth-API-Token: '${auth_api_token})
 
 # check if either zone_id or zone_name is correct
 if [[ "$(echo ${zone_info} | jq --raw-output '.zones[] | select(.name=="'${zone_name}'") | .id')" = "" && "$(echo ${zone_info} | jq --raw-output '.zones[] | select(.id=="'${zone_id}'") | .name')" = "" ]]; then
@@ -116,22 +114,23 @@ if [[ "${record_name}" = "" ]]; then
   exit 1
 fi
 
+
 get_ext_ip() {
   # get external ip using either 
-  # 1) who-am-i backend
+  # 1) ip.hetzner.com
   # 2) own server backend using "ping.php"
   # 3) fritzbox backend call
   local response=""
   local at_part
-  if [[ "$1" = 'who-am-i' ]]; then
+  if [[ "$1" = 'hetzner' ]]; then
     if [[ "$2" == '-6' ]]; then 
       # ipv6
-      at_part='@2606:4700:4700::1111'
+      response=$(curl -s6  ${ext_ip_resolver} | grep -E '^([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}$')
     else
       # ipv4
-      at_part='@1.1.1.1'
+      response=$(curl -s4  ${ext_ip_resolver} | grep -E '^([0-9]+(\.|$)){4}')
     fi
-    response=$(dig "$2" ch TXT +short "${ext_ip_resolver}" "$at_part" | awk -F '"' '{print $2}')
+
   elif [[ "$1" = 'server' ]]; then
     # if you have a json backend on a private server, you can use that
     # jq
@@ -160,10 +159,12 @@ get_ext_ip() {
 }
 
 
+
 # get current public ip address
 if [[ "${record_type}" = "AAAA" ]]; then
   logger Info "Using IPv6, because AAAA was set as record type."
   cur_pub_addr=$(get_ext_ip "$ext_ip_resolver_type" '-6')
+  
   if [[ "${cur_pub_addr}" = "" ]]; then
     logger Error "It seems you don't have a IPv6 public address."
     exit 1
@@ -173,6 +174,7 @@ if [[ "${record_type}" = "AAAA" ]]; then
 elif [[ "${record_type}" = "A" ]]; then
   logger Info "Using IPv4, because A was set as record type."
   cur_pub_addr=$(get_ext_ip "$ext_ip_resolver_type" '-4')
+  
   if [[ "${cur_pub_addr}" = "" ]]; then
     logger Error "Apparently there is a problem in determining the public ip address."
     exit 1
@@ -183,7 +185,6 @@ else
   logger Error "Only record type \"A\" or \"AAAA\" are support for DynDNS."
   exit 1
 fi
-
 
 # get record id if not given as parameter
 if [[ "${record_id}" = "" ]]; then
@@ -196,7 +197,7 @@ if [[ "${record_id}" = "" ]]; then
     logger Error "HTTP Response ${http_code} - Aborting run to prevent multipe records."
     exit 1
   else 
-    record_id=$(echo ${record_zone} | jq . | sed '$d' | jq --raw-output ".records[] | select(.type == \"${record_type}\") | select(.name == \"${record_name}\") | .id")
+    record_id=$(echo ${record_zone} | jq | sed '$d' | jq --raw-output '.records[] | select(.type == "'${record_type}'") | select(.name == "'${record_name}'") | .id')
   fi
 fi 
 
@@ -217,7 +218,7 @@ if [[ "${record_id}" = "" ]]; then
         }'
 else
 # check if update is needed
-  cur_dyn_addr=$(curl -s "https://dns.hetzner.com/api/v1/records/${record_id}" -H 'Auth-API-Token: '${auth_api_token} | jq --raw-output '.record.value')
+  cur_dyn_addr=`curl -s "https://dns.hetzner.com/api/v1/records/${record_id}" -H 'Auth-API-Token: '${auth_api_token} | jq --raw-output '.record.value'`
 
   logger Info "Currently set IP address: ${cur_dyn_addr}"
 
