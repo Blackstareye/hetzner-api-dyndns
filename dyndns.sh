@@ -17,6 +17,9 @@ localserver=${LOCALSERVERFILE:-'server.json'}
 ext_ip_resolver_type=${HETZNER_EXT_IP_RESOLVER_TYPE:-'hetzner'}
 ext_ip_resolver=${HETZNER_EXT_IP_RESOLVER:-'https://ip.hetzner.com'}
 
+record_set=""
+
+
 display_help() {
   cat <<EOF
 
@@ -71,7 +74,7 @@ done
 for cmd in curl jq; do
   if ! command -v "${cmd}" &> /dev/null; then
     logger Error "To run the script '${cmd}' is needed, but it seems not to be installed."
-    logger Error "Please check 'https://github.com/FarrowStrange/hetzner-api-dyndns#install-tools' for more informations and try again."
+    logger Error "Please check 'https://github.com/Blackstareye/hetzner-api-dyndns#install-tools' for more informations and try again."
     exit 1
   fi
 done
@@ -83,9 +86,8 @@ if [[ "${auth_api_token}" = "" ]]; then
 fi
 
 # get all zones
-zone_info=$(curl -s --location \
-          "https://dns.hetzner.com/api/v1/zones" \
-          --header 'Auth-API-Token: '${auth_api_token})
+zone_info=$(curl "https://api.hetzner.cloud/v1/zones?name=&mode=primary&label_selector=&sort=id&page=1&per_page=25" --header "Authorization: Bearer ${auth_api_token}")
+
 
 # check if either zone_id or zone_name is correct
 if [[ "$(echo ${zone_info} | jq --raw-output '.zones[] | select(.name=="'${zone_name}'") | .id')" = "" && "$(echo ${zone_info} | jq --raw-output '.zones[] | select(.id=="'${zone_id}'") | .name')" = "" ]]; then
@@ -188,56 +190,83 @@ fi
 
 # get record id if not given as parameter
 if [[ "${record_id}" = "" ]]; then
-  record_zone=$(curl -s -w "\n%{http_code}" --location \
-                 --request GET 'https://dns.hetzner.com/api/v1/records?zone_id='${zone_id} \
-                 --header 'Auth-API-Token: '${auth_api_token})
+    record_zone=$(curl -s -w "\n%{http_code}" --location --request GET "https://api.hetzner.cloud/v1/zones/${zone_id}/rrsets?name=&type=${record_type}&label_selector=&sort=id&page=1&per_page=25" \
+  --header "Authorization: Bearer ${auth_api_token}")
 
   http_code=$(echo "${record_zone}" | tail -n 1 )
   if [[ "${http_code}" != "200" ]]; then
     logger Error "HTTP Response ${http_code} - Aborting run to prevent multipe records."
     exit 1
   else 
-    record_id=$(echo ${record_zone} | jq | sed '$d' | jq --raw-output '.records[] | select(.type == "'${record_type}'") | select(.name == "'${record_name}'") | .id')
+    record_set=$(echo ${record_zone} | jq | sed '$d' | jq --raw-output '.rrsets [] | select(.type == "'${record_type}'") | select(.name == "'${record_name}'")')
+    record_id=$(echo $record_set | jq -r '.id')
   fi
 fi 
 
 logger Info "Record_ID: ${record_id}"
 
-# create a new record
 if [[ "${record_id}" = "" ]]; then
-  echo "DNS record \"${record_name}\" does not exists - will be created."
-  curl -s -X "POST" "https://dns.hetzner.com/api/v1/records" \
-       -H 'Content-Type: application/json' \
-       -H 'Auth-API-Token: '${auth_api_token} \
-       -d $'{
-          "value": "'${cur_pub_addr}'",
-          "ttl": '${record_ttl}',
-          "type": "'${record_type}'",
-          "name": "'${record_name}'",
-          "zone_id": "'${zone_id}'"
-        }'
+  echo "DNS record \"${record_name}\" does not exists"
+  # create hetzner record
+  curl -s -o /dev/null -w "%{http_code}\n" "https://api.hetzner.cloud/v1/zones/${zone_id}/rrsets/www/${record_type}/actions/add_records" \
+  --request POST \
+  --header 'Content-Type: application/json' \
+  --header "Authorization: Bearer ${auth_api_token}" \
+ --data '{
+    "ttl": '"${record_ttl}"',
+    "records": [
+      {
+        "value": "'"${cur_pub_addr}"'",
+        "comment": "Dyn DNS POST"
+      }
+    ]
+  }'
+
+      # curl -s -X "POST" "https://dns.hetzner.com/api/v1/records" \
+      #  -H 'Content-Type: application/json' \
+      #  -H 'Auth-API-Token: '${auth_api_token} \
+      #  -d $'{
+      #     "value": "'${cur_pub_addr}'",
+      #     "ttl": '${record_ttl}',
+      #     "type": "'${record_type}'",
+      #     "name": "'${record_name}'",
+      #     "zone_id": "'${zone_id}'"
+      #   }'
 else
 # check if update is needed
-  cur_dyn_addr=`curl -s "https://dns.hetzner.com/api/v1/records/${record_id}" -H 'Auth-API-Token: '${auth_api_token} | jq --raw-output '.record.value'`
-
+  # cur_dyn_addr=`curl -s "https://dns.hetzner.com/api/v1/records/${record_id}" -H 'Auth-API-Token: '${auth_api_token} | jq --raw-output '.record.value'`
+  cur_dyn_addr=$(echo $record_set | jq -r '.records[0]|.value')
   logger Info "Currently set IP address: ${cur_dyn_addr}"
-
 # update existing record
   if [[ $cur_pub_addr == $cur_dyn_addr ]]; then
     logger Info "DNS record \"${record_name}\" is up to date - nothing to to."
     exit 0
   else
-    logger Info "DNS record \"${record_name}\" is no longer valid - updating record" 
-    curl -s -X "PUT" "https://dns.hetzner.com/api/v1/records/${record_id}" \
-         -H 'Content-Type: application/json' \
-         -H 'Auth-API-Token: '${auth_api_token} \
-         -d $'{
-           "value": "'${cur_pub_addr}'",
-           "ttl": '${record_ttl}',
-           "type": "'${record_type}'",
-            "name": "'${record_name}'",
-           "zone_id": "'${zone_id}'"
-         }'
+    logger Info "DNS record \"${record_name}\" is no longer valid - updating record"
+    
+    curl -s -o /dev/null -w "%{http_code}\n" "https://api.hetzner.cloud/v1/zones/${zone_id}/rrsets/${record_id}/actions/update_records" \
+    --request POST \
+    --header 'Content-Type: application/json' \
+    --header "Authorization: Bearer ${auth_api_token}" \
+    --data '{
+    "records": [
+      {
+        "value": "'"${cur_pub_addr}"'",
+        "comment": "UPDATE IP: Dyn DNS POST"
+      }
+    ]
+  }'
+    # curl -s -X "PUT" "https://dns.hetzner.com/api/v1/records/${record_id}" \
+    #      -H 'Content-Type: application/json' \
+    #      -H 'Auth-API-Token: '${auth_api_token} \
+    #      -d $'{
+    #        "value": "'${cur_pub_addr}'",
+    #        "ttl": '${record_ttl}',
+    #        "type": "'${record_type}'",
+    #         "name": "'${record_name}'",
+    #        "zone_id": "'${zone_id}'"
+    #      }'
+
     if [[ $? != 0 ]]; then
       logger Error "Unable to update record: \"${record_name}\""
     else
