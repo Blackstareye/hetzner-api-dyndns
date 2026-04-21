@@ -63,7 +63,7 @@ You can use the following enviroment variables.
 |HETZNER_RECORD_NAME    | dyn                              | The record name. '@' to set the record for the zone itself.     |
 |HETZNER_RECORD_TTL     | 120                              | The TTL of the record. Default(60)                              |
 |HETZNER_RECORD_TYPE    | AAAA                             | The record type. Either A for IPv4 or AAAA for IPv6. Default(A) |
-|HETZNER_EXT_IP_RESOLVER_TYPE    | who-am-i                             | The method that will be used to extract the public ip. Default is a request to "who-am-i" using "dig" |
+|HETZNER_EXT_IP_RESOLVER_TYPE    | hetzner                             | The method that will be used to extract the public ip. Default is a request to "who-am-i" using "dig" |
 |LOCALSERVERFILE    | server.json                             | The config file, that is used for the method "server". Contains server-url and credentials(optional) |
 
 # Help
@@ -72,7 +72,7 @@ Type `-h` to display help page.
 ./dyndns.sh -h
 ```
 ```
-exec: ./dyndns.sh [ -z <Zone ID> | -Z <Zone Name> ] [-m <who-am-i|fritzbox|server>] -r <Record ID> -n <Record Name>
+exec: ./dyndns.sh [ -z <Zone ID> | -Z <Zone Name> ] [-m <hetzner|fritzbox|server>] -r <Record ID> -n <Record Name>
 
 parameters:
   -z  - Zone ID
@@ -83,13 +83,13 @@ parameters:
 optional parameters:
   -t  - TTL (Default: 60)
   -T  - Record type (Default: A)
-  -m  - Method for Extracting IP(Default:who-am-i)
+  -m  - Method for Extracting IP(Default:hetzner)
 
 help:
   -h  - Show Help 
 
 requirements:
-curl, dig, jq and awk are required to run this script.
+curl,jq are required to run this script.
 
 example:
   .exec: ./dyndns.sh -z 98jFjsd8dh1GHasdf7a8hJG7 -r AHD82h347fGAF1 -n dyn
@@ -107,7 +107,7 @@ curl "https://dns.hetzner.com/api/v1/zones" -H \
 
 There are 3 methods implemented right now:
 
-* **-m who-am-i**, via dig request to who-am-i, the external ip will be determined 
+* **-m hetzner**, via `ip.hetzner.com`, the external ip will be determined 
 * **-m server**, use your **own** server to determine the external ip. 
   In ./server-backend  is a simple php script for the backend; it is also possible to protect the backend via .htaccess and using credentials (basic auth).
 * **-m fritzbox**, use fritzbox's functionality to determine the current external ip using [this script](https://wiki.ubuntuusers.de/FritzBox/Skripte/) from ubuntuusers.
