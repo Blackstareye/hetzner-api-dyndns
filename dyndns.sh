@@ -19,6 +19,10 @@ ext_ip_resolver=${HETZNER_EXT_IP_RESOLVER:-'https://ip.hetzner.com'}
 
 record_set=""
 
+debug() {
+  echo "$1"
+}
+
 
 display_help() {
   cat <<EOF
@@ -222,6 +226,26 @@ if [[ "${record_id}" = "" ]]; then
     ]
   }'
 
+  #  debug
+
+  #     cmd=$(cat <<EOF
+  #       curl -s -o /dev/null -w "%{http_code}\n" "https://api.hetzner.cloud/v1/zones/${zone_id}/rrsets/${record_id}/actions/set_records" \
+  #         --request POST \
+  #         --header 'Content-Type: application/json' \
+  #         --header "Authorization: Bearer ${auth_api_token}" \
+  #         --data '{
+  #           "records": [
+  #             {
+  #               "value": "'"${cur_pub_addr}"'",
+  #               "comment": "UPDATE IP: Dyn DNS POST"
+  #             }
+  #           ]
+  #         }'
+  # EOF
+  # )
+
+  # debug "$cmd"
+
       # curl -s -X "POST" "https://dns.hetzner.com/api/v1/records" \
       #  -H 'Content-Type: application/json' \
       #  -H 'Auth-API-Token: '${auth_api_token} \
@@ -244,7 +268,7 @@ else
   else
     logger Info "DNS record \"${record_name}\" is no longer valid - updating record"
     
-    curl -s -o /dev/null -w "%{http_code}\n" "https://api.hetzner.cloud/v1/zones/${zone_id}/rrsets/${record_id}/actions/update_records" \
+    curl -s -o /dev/null -w "%{http_code}\n" "https://api.hetzner.cloud/v1/zones/${zone_id}/rrsets/${record_id}/actions/set_records" \
     --request POST \
     --header 'Content-Type: application/json' \
     --header "Authorization: Bearer ${auth_api_token}" \
