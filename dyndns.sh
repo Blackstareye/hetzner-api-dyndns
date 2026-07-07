@@ -268,18 +268,19 @@ else
   else
     logger Info "DNS record \"${record_name}\" is no longer valid - updating record"
     
-    curl -s -o /dev/null -w "%{http_code}\n" "https://api.hetzner.cloud/v1/zones/${zone_id}/rrsets/${record_id}/actions/set_records" \
-    --request POST \
-    --header 'Content-Type: application/json' \
-    --header "Authorization: Bearer ${auth_api_token}" \
+    curl --fail-with-body \
+    -X POST \
+    -H "Authorization: Bearer ${auth_api_token}" \
+    -H "Content-Type: application/json" \
     --data '{
-    "records": [
+      "records":[
       {
-        "value": "'"${cur_pub_addr}"'",
-        "comment": "UPDATE IP: Dyn DNS POST"
+          "value":"'"${cur_pub_addr}"'",
+          "comment":"UPDATE IP: Dyn DNS POST"
       }
     ]
-  }'
+    }' \
+    "https://api.hetzner.cloud/v1/zones/${zone_id}/rrsets/${record_id}/actions/set_records"
     # curl -s -X "PUT" "https://dns.hetzner.com/api/v1/records/${record_id}" \
     #      -H 'Content-Type: application/json' \
     #      -H 'Auth-API-Token: '${auth_api_token} \
